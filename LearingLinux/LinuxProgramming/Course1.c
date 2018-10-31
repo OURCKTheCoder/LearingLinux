@@ -6,7 +6,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 
-void main()
+int main(int argc, char *argv[])
 {
 	// int open(char* path, int flags)
 	// 成功返回文件描述符，失败返回-1
@@ -44,14 +44,38 @@ void main()
 
 	// off_t lseek(int fd, off_t offset, int whence)
 	// int fstat(int fd, struct stat *buf) 
-	// int stat(char*, stat buf)
-	// int lstat(char*, stat buf)
+	struct stat statBuf;
+	fstat(fd, &statBuf);
+	// printf("fstat got: mode=%s, inode=%d, ctime=%d", statBuf.st_mode, statBuf.st_ino, statBuf.st_ctime); // How to print them out?
+
+	// int stat(char*, stat buf) Get stat by name.
+	// int lstat(char*, stat buf) Get stat by name. If a file is a link, get this link's detail instead of the file it refers to.
 	// stdio lib:fopen:fclose fread fclose fflush ... (not concerning fd)(using buffer)
 
 	// int main(int argc, char *argv[]) $exe 1 2 3. argc = 4.
+	printf("This program received %d args \n", argc);
+	int i = 0;
+	for(i = 0; i < argc; i++)
+	{
+		printf("\t- arg%d = %s \n", i, argv[i]);
+	}
 	// int getopt(int argc, char *argv, char* optstring) Get the detail of args.
+	extern char *optarg;
+	extern int optind, opterr, optopt;
+	char opt = 0;	
+	while((opt = getopt(argc, argv, ":ab:c")) != -1)
+	{
+		if(opt == '?')
+			printf("\t- Unknown option %c\n", optopt);
+		else if(opt == ':') 
+			printf("\t- Arg %c needs operand\n", optopt);
+		else
+			printf("\t- Received option %c, with %s\n",opt,optarg);
+	}
 	
 	// int fork()
 	// int pipe(int fd[2])
 
+
+	return 0;
 }

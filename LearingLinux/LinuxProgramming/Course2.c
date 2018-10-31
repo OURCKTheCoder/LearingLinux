@@ -8,7 +8,7 @@ main()
 	// putenv(const char *) 设置环境变量仅对当前程序有效
 	// getenv(const char *) 获取环境变量
 	// <stdlib.h> extern char ** environ 指向当前系统环境变量结构的指针
-	char* val = getenv("HOME");
+	char* val = getenv("JAVA_HOME");
 	printf("%s\n", val);
 	printf("%s\n", *environ);
 	
