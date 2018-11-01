@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
 	// 额外的可以有：O_CREAT 新建 O_EXCL 创建不允许覆盖
 	// O_TRUNC 可写打开时清空原有内容
 	
-        // size_t write(int fd, void *buf, size_t count) void *?
+    // size_t write(int fd, void *buf, size_t count) void *?
 	char *buf = "This is some text for test.";
 	if(fd != -1)
 	{
