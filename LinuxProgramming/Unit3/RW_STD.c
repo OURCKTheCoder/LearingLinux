@@ -12,7 +12,7 @@
 int main()
 {
 	// 1. Open & create a file.
-	
+
 	// 2. Write some cool shit in it.
 	
 	// Reset the fd ptr.
