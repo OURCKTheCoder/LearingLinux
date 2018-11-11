@@ -46,6 +46,7 @@ int getAndIncrement();
  * 但注意：用标志量（“令牌”）来做自旋的套路是不可行的。
  * 因为fork()会令子进程得到父进程的一些运行时数据的拷贝，
  * 这就导致对标志量的修改只会在该进程（父进程 OR 子进程）自己的内存空间生效。
+ * ——但为什么counter不会出现这个问题？
  * 
  * 不知道除了在设置一个信号量之外，还有什么更优雅的做法？
  */
@@ -121,6 +122,7 @@ int main(int argc, char *argv[])
 				V(MUTEX_ID);
 				V(P_TOKEN_ID);
 				break;
+				
 			default:
 				P(P_TOKEN_ID);
 				P(MUTEX_ID);
@@ -161,7 +163,7 @@ int Initialize()
 	P_TOKEN_ID = semget(TOKEN_FOR_PARENT_PROTOCAL, 1, IPC_CREAT | 0666);
 	C_TOKEN_ID = semget(TOKEN_FOR_CHILD_PROTOCAL, 1, IPC_CREAT | 0666);
 	
-	union semun orig_val_1, orig_val_0;;
+	union semun orig_val_1, orig_val_0;
 	orig_val_1.val = 1;
 	orig_val_0.val = 0;
 	
@@ -191,13 +193,49 @@ int getAndIncrement()
 	int fd = open(TESTFILE_NAME, O_RDONLY);
 	if(fd == -1) { printf("Error when opening file!\n"); return -1; }
 	
+	
+	const int MAX_BUF_SIZE = 10;
+	char buf[MAX_BUF_SIZE];
+	size_t read_b = 0;
+	size_t total = 1;
+	char *str = malloc(total); str[0] = '\0';
+	while((read_b = read(fd, buf, MAX_BUF_SIZE)) != 0)
+	{
+		// 1. Save old string.
+		char *tmp = malloc(total + 1);
+		strcpy(tmp, str);
+		
+		// 2. Allocate new buf with new size. 
+		total += read_b;
+		str = malloc(total + 1);
+		
+		// 3. Concat old str with new str.
+		strcpy(str, tmp);
+		strcat(str, buf);
+		
+		// 4. Release old buf.
+		free(tmp);
+	}
+	
+	counter = atoi(str);
 	/**
 	 * P.S. 该行输出的作用：用于测试同步成功后的操作原子性。
-	 * 		换句话说，如果父进程与子进程成功互斥访问资源的话，
+	 * 		换句话说，如果父进程与子进程成功互斥访问资源的话，应该同时具有两行输出，
 	 *		下面这行输出的pid与 进入该函数之前输出的那行字符串 中的pid应该保持一致，
 	 *		且两行输出中间没有其他的任何输出。
 	 */
-	printf("\tpid = %d accessed file, fd = %d \n", getpid(), fd); // TODO DEBUG-ONLY
+	printf("\tpid = %d accessed file, fd = %d, data read = %d", getpid(), fd, counter);
+	printf(", write = %d \n", ++counter);
+	close(fd);
+	
+	// Write to file.
+	fd = open(TESTFILE_NAME, O_RDWR | O_CREAT | O_TRUNC);
+	if(fd == -1) { printf("Error when opening file!\n"); return -1; }
+	
+	int size = counter / 10 + 1; 	// Calculate bytes' size.
+	char w_str[size + 1];			// + '\0'
+	sprintf(w_str, "%d", counter);
+	write(fd, w_str, strlen(w_str));
 	
 	close(fd);
 }
