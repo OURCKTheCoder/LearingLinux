@@ -7,7 +7,7 @@
 
 #define BUF_SIZE 100
 
-int bits_size = 5;
+int bits_size = 4;
 const char TERM_CHAR[2] = {' ', '\n'};
 
 struct count_stat
@@ -42,7 +42,7 @@ bool isCharAChar(char c)
 
 void printResult(struct count_stat stat)
 {
-	printf("%*d %*d %*d\t%s\n",
+	printf("%*d %*d %*d %s\n",
 			bits_size, stat.line_num,
 			bits_size, stat.word_num,
 			bits_size, stat.char_num, stat.name);
@@ -62,14 +62,25 @@ int main(int argc, char *argv[])
 
 	switch(argc)
 	{
+		struct count_stat total;
 		case 1:
 			inputAsStream();
+			break;
 		default:
+			total.char_num = 0;
+			total.word_num = 0;
+			total.line_num = 0;
+			total.name = "总用量";
 			for(int i = 1; i < argc; i++)
 			{
 				struct count_stat s = openFileAndCount(argv[i]);
 				printResult(s);
+				total.char_num += s.char_num;
+				total.word_num += s.word_num;
+				total.line_num += s.line_num;
 			}
+			if(argc != 2) printResult(total);
+			break;
 	}
 
 	return 0;
