@@ -4,12 +4,18 @@
 #include<stdlib.h>
 #include<stdbool.h>
 #include<sys/types.h>
+#include<sys/stat.h>
 #include<dirent.h>
+#include<errno.h>
+struct item_record
+{
+	char *str;
+};
 
 struct file_item
 {
-	int colNum;
-	char **data;
+	int col_num;
+	struct item_record *data;
 	struct file_item *next;
 };
 
@@ -22,91 +28,194 @@ struct item_table
 static bool flag_l, flag_R, flag_a, flag_i, flag_d;
 const static size_t MAX_DIRCHAR_BUFSIZE = 100;
 
-struct item_table genPwdTable(char *path); 
+struct item_table genPwdTable(const char *path);
+void printItemTable(struct item_table); 
 
 int main(int argc, char *argv[])
 {
 	/* 1. Init flags */
-	printf("This program received %d args \n", argc);
-        int i = 0;
-        for(i = 0; i < argc; i++)
-        {
-                printf("\t- arg%d = %s \n", i, argv[i]);
-        }
-        // int getopt(int argc, char *argv, char* optstring) Get the detail of args.
-        extern char *optarg;
-        extern int optind, opterr, optopt;
-        char opt = 0;
-		char final_args[50] = {0}; // TODO MAX_SIZE = 50
-        while((opt = getopt(argc, argv, ":lRaid")) != -1)
-        {
-                if(opt == '?')
-                        printf("\t- Unknown option %c\n", optopt);
-                else if(opt == ':')
-                        printf("\t- Arg %c needs operand\n", optopt);
-                else
+/*	printf("This program received %d args \n", argc);*/
+/*    int i = 0;*/
+/*    for(i = 0; i < argc; i++)*/
+/*    {*/
+/*            printf("\t- arg%d = %s \n", i, argv[i]);*/
+/*    }*/
+    // int getopt(int argc, char *argv, char* optstring) Get the detail of args.
+    extern char *optarg;
+    extern int optind, opterr, optopt;
+    char opt = 0;
+	char final_args[50] = {0}; // TODO MAX_SIZE = 50
+    while((opt = getopt(argc, argv, ":lRaid")) != -1)
+    {
+            if(opt == '?')
+                    printf("\t- Unknown option %c\n", optopt);
+            else if(opt == ':')
+                    printf("\t- Arg %c needs operand\n", optopt);
+            else
+			{
+				//printf("\t- Received option %c, with %s\n",opt,optarg);
+				char c[] = {'-', opt, ' ', '\0'};
+				strcat(final_args, c);
+				switch(opt)
 				{
-					printf("\t- Received option %c, with %s\n",opt,optarg);
-					char c[] = {'-', opt, ' ', '\0'};
-					strcat(final_args, c);
-					switch(opt)
-					{
-					case 'l': flag_l = true; break;
-					case 'R': flag_R = true; break;
-					case 'a': flag_a = true; break;
-					case 'i': flag_i = true; break;
-					case 'd': flag_d = true; break;
-					default: break;
-					}
+				case 'l': flag_l = true; break;
+				case 'R': flag_R = true; break;
+				case 'a': flag_a = true; break;
+				case 'i': flag_i = true; break;
+				case 'd': flag_d = true; break;
+				default: break;
 				}
-        }
-	printf("----------------------------\n");
-	printf("final_args = %s \n", final_args);
-	char cmd[] = "ls ";
-	strcat(cmd, final_args);
+			}
+    }
+	int iDirs = 0;
+	int i;
+	for(; optind < argc; optind++) iDirs++; // argv[] changed.
 	
-	char dir_args[100] = {'\0'}; // TODO MAX_SIZE = 100
-	for(; optind < argc; optind++)
+	if(iDirs > 1)
 	{
-		printf("Direct argument: %s\n", argv[optind]);
-		strcat(dir_args, argv[optind]);
-		char c[] = {' ', '\0'};
-		strcat(dir_args, c);
+		for(i = argc - iDirs; i < argc; i++)
+		{
+			//printf("Direct argument: %s\n", argv[optind]);
+			printf("%s:\n", argv[i]);
+			struct item_table table = genPwdTable(argv[i]);
+			printItemTable(table);
+			if(i != argc - 1) printf("\n");
+		}
 	}
-	strcat(cmd, dir_args);
-	printf("final cmd = %s\n", cmd);	
-
-	printf("---------------------------- \n");
-	genPwdTable("/home/ourck");
-
+	else if(iDirs == 1)
+	{
+		struct item_table table = genPwdTable(argv[argc - iDirs]);
+		printItemTable(table);
+	}
+	else // iDirs = 0
+	{
+		struct item_table table = genPwdTable(".");
+		printItemTable(table);
+	}
+	
 	return 0;
 }
 
-struct item_table genPwdTable(char *path)
+struct item_table genPwdTable(const char *path)
 {
 	// 1. cd to current directory.
-	chdir(path);
+	if(chdir(path) != 0)
+	{ printf(" [!] ERROR: chdir() failed! errno = %d\n - See http://man7.org/linux/man-pages/man3/errno.3.html\n", errno); exit(1); }
+	
 	char cwd[MAX_DIRCHAR_BUFSIZE];
 	if(NULL == getcwd(cwd, MAX_DIRCHAR_BUFSIZE))
 	{ printf(" [!] ERROR: MAX_DIRCHAR_BUFSIZE too small!\n"); exit(1); }
 
 	// 2. open this dir.
-	DIR *p_cd;
-	p_cd = opendir(cwd); // TODO NULL if fail.
+	DIR *p_cd = NULL;
+	if((p_cd = opendir(cwd)) == NULL)
+	{ printf(" [!] ERROR: opendir() failed!\n"); exit(1); }
 	
 	// 3. scan current directory.
-	struct dirent *dir_item;
+	int item_num = 0;
+	struct dirent *dir_item = NULL;
+	struct file_item *head = malloc(sizeof(struct file_item));			// TODO DELETE
+	struct file_item *ptr = malloc(sizeof(struct file_item));				// TODO DELETE
 	while((dir_item = readdir(p_cd)) != NULL)
 	{
-		char abs_path[MAX_DIRCHAR_BUFSIZE];
-		strcpy(abs_path, cwd);
-		strcat(abs_path, "/");
-		strcat(abs_path, dir_item->d_name); // TODO Filter '..' & '.' ?
-		printf("inode = %ld, name = %s\n", dir_item->d_ino, abs_path); // TODO Link?
+		char *abs_path = malloc(MAX_DIRCHAR_BUFSIZE);						 
+		char *item_name = dir_item->d_name;
+		// Used for concating pwd to the file name.
+		if(!(strcmp(item_name, ".") == 0 || strcmp(item_name, "..") == 0))
+		{
+			strcpy(abs_path, cwd);
+			strcat(abs_path, "/");
+		}
+		
+		strcat(abs_path, item_name);
+
+		// Always generate #COMPLETE# file info.
+		const int record_num = 8;		
+		struct file_item *item = malloc(sizeof(struct file_item));		// TODO DELETE
+		struct item_record *records = malloc(sizeof(struct item_record) * record_num); //TODO DELETE
+		struct stat *st = malloc(sizeof(struct stat));
+		stat(abs_path, st);
+		
+		char *ino_str = malloc(sizeof(dir_item->d_ino)); 					// TODO DELETE
+		sprintf(ino_str, "%ld", st->st_ino);
+		records[0].str = ino_str;
+		char *mode_str = malloc(sizeof(st->st_mode)); 						// TODO DELETE
+		sprintf(mode_str, "%d", st->st_mode);
+		records[1].str = mode_str;
+		char *link_str = malloc(sizeof(st->st_nlink));						// TODO DELETE
+		sprintf(link_str, "%ld", st->st_nlink);
+		records[2].str = link_str;
+		char *uid_str = malloc(sizeof(st->st_uid));						// TODO DELETE
+		sprintf(uid_str, "%d", st->st_uid);
+		records[3].str = uid_str;
+		char *gid_str = malloc(sizeof(st->st_gid));						// TODO DELETE
+		sprintf(gid_str, "%d", st->st_gid);
+		records[4].str = gid_str;
+		char *size_str = malloc(sizeof(st->st_size));						// TODO DELETE
+		sprintf(size_str, "%ld", st->st_size);		
+		records[5].str = size_str;
+		char *ctime_str = malloc(sizeof(st->st_ctime));					// TODO DELETE
+		sprintf(ctime_str, "%ld", st->st_ctime);
+		records[6].str = ctime_str;
+		records[7].str = malloc(strlen(item_name));							// TODO DELETE
+		strcpy(records[7].str, item_name);
+		
+		item->col_num = record_num;
+		item->data = malloc(sizeof(struct item_record) * record_num);		// TODO DELETE
+		for(int i = 0; i < record_num; i++) item->data[i] = records[i];
+		item->next = NULL;
+		
+		// Link to the head.
+		ptr = head->next; 
+		head->next = item;
+		head->next->next = ptr;
+		item_num++;
+		
+		free(abs_path);
+	
 	}
+	
+	struct item_table table;
+	table.num = item_num;
+	table.head = malloc(sizeof(struct file_item) * item_num);				// TODO DELETE
+	
+	struct file_item *p = head;
+	int iItem = 0;
+	while((p = p->next) != NULL)
+	{
+		table.head[iItem] = *p;
+		iItem++;
+	}	
 	
 	// X. CLOSE DIR
 	closedir(p_cd);
+	
+	return table;
+}
+
+void printItemTable(struct item_table table)
+{
+	struct file_item *p = table.head;
+	while((p = p->next) != NULL)
+	{		
+		// Switch 1: -a
+		if(p->data[7].str[0] == '.') 
+			if(!flag_a) continue;
+			
+		// Switch 2: -i
+		int iStart;
+		if(!flag_i) iStart = 1;
+		else		iStart = 0;
+		for(int i = iStart; i < p->col_num; i++)
+		{
+			// Switch 3: -l
+			if(!flag_l)
+				if(i != 0 && i != 7) continue;
+				
+			printf("%s\t", p->data[i].str);
+		}
+		printf("\n");
+	}	
 }
 
 
