@@ -1,12 +1,6 @@
-#include<stdio.h>
-#include<unistd.h>
-#include<string.h>
-#include<stdlib.h>
-#include<stdbool.h>
-#include<sys/types.h>
-#include<sys/stat.h>
-#include<dirent.h>
-#include<errno.h>
+#include "recrusive_dir.h"
+#include "dir_headers.h"
+
 struct item_record
 {
 	char *str;
@@ -30,6 +24,65 @@ const static size_t MAX_DIRCHAR_BUFSIZE = 100;
 
 struct item_table genPwdTable(const char *path);
 void printItemTable(struct item_table); 
+
+ // TODO 应该写在ecrusive_dir.c里面 但如何编译？
+// TODO Copy in depth?
+struct str_list *catAsList(struct list_node *head)
+{
+	struct str_list *list = malloc(sizeof(struct str_list));
+	if(head == NULL) return NULL;
+	else
+	{
+		int iSize = 1;
+		struct list_node *rear = head;
+		while((rear = rear->next) != NULL) iSize++;
+		list->size = iSize;
+		list->head.next = head;
+		return list;
+	}
+
+}
+
+ // TODO 应该写在ecrusive_dir.c里面 但如何编译？
+struct list_node *getAllChild(char *root)
+{
+	DIR *p_dir = opendir(root);
+	struct dirent *child = NULL;
+	struct list_node *child_list = NULL;
+	struct list_node *list = NULL;
+	struct list_node *rear = NULL;
+	
+	list = malloc(sizeof(struct list_node));
+	list->name = malloc(strlen(root) * sizeof(char) + 1); // TODO !!!!!!!!!!!!!!!!!!!
+	strcpy(list->name, root);
+	list->next = NULL;
+	rear = list;
+	while(rear->next != NULL && (rear = rear->next) != NULL); // Short circuit.
+
+	chdir(root);
+	
+	while((child = readdir(p_dir)) != NULL)
+	{
+		if(strcmp(child->d_name, ".") == 0 || strcmp(child->d_name, "..") == 0)
+			continue;
+		struct stat stat_buf;
+		lstat(child->d_name, &stat_buf);
+		if(!S_ISDIR(stat_buf.st_mode))
+			continue;
+		char cwd[MAX_BUF_LEN];
+		getcwd(cwd, MAX_BUF_LEN);
+		strcat(cwd, "/");
+		strcat(cwd, child->d_name);
+		child_list = getAllChild(cwd);
+
+		rear->next = child_list;
+		while(rear->next != NULL && (rear = rear->next) != NULL); // Short circuit.
+
+	}
+	
+	chdir("..");
+	return list;
+}
 
 int main(int argc, char *argv[])
 {
@@ -58,33 +111,75 @@ int main(int argc, char *argv[])
 				strcat(final_args, c);
 				switch(opt)
 				{
-				case 'l': flag_l = true; break;
-				case 'R': flag_R = true; break;
-				case 'a': flag_a = true; break;
-				case 'i': flag_i = true; break;
-				case 'd': flag_d = true; break;
-				default: break;
+					case 'l': flag_l = true; break;
+					case 'R': flag_R = true; break;
+					case 'a': flag_a = true; break;
+					case 'i': flag_i = true; break;
+					case 'd': flag_d = true; break;
+					default: break;
 				}
 			}
     }
+    
 	int iDirs = 0;
 	int i;
 	for(; optind < argc; optind++) iDirs++; // argv[] changed.
 	
+	char **cmd_dirs = malloc(sizeof(char *) * iDirs);					// TODO DELETE
+	for(i = 0; i < iDirs; i++)
+	{
+		cmd_dirs[i] = malloc(strlen(argv[argc - iDirs + i]) + 1);		// TODO DELETE
+		strcpy(cmd_dirs[i], argv[argc - iDirs + i]);
+	}
+	
+	// Switch -R
+	struct list_node *target_dirs = malloc(sizeof(struct list_node));
+	target_dirs->next = NULL;
+	struct list_node *rear = target_dirs;
+	if(flag_R)
+	{
+		int i;
+		char ***head = malloc(sizeof(char **) * iDirs);					// TODO DELETE
+		for(i = 0; i < iDirs; i++) head[i] = &cmd_dirs[i];
+		
+		// for each root, make a Q.
+		for(i = 0; i < iDirs; i++)
+		{
+			struct list_node *child_lists = getAllChild(*head[i]);
+			rear->next = child_lists;
+			while(rear != NULL && rear->next != NULL) rear = rear->next;
+		}
+	}
+	else
+	{
+		int i;
+		for(i = 0; i < iDirs; i++)
+		{
+			struct list_node *node = malloc(sizeof(struct list_node));
+			node->name = malloc(strlen(cmd_dirs[i]));
+			strcpy(node->name, cmd_dirs[i]);
+			rear->next = node;
+			rear = rear->next;
+		}
+	}
+	
+	struct list_node *ptr = target_dirs->next;
 	if(iDirs > 1)
 	{
-		for(i = argc - iDirs; i < argc; i++)
+		while(ptr != NULL)
 		{
 			//printf("Direct argument: %s\n", argv[optind]);
-			printf("%s:\n", argv[i]);
-			struct item_table table = genPwdTable(argv[i]);
+			printf("%s:\n", ptr->name);
+			struct item_table table = genPwdTable(ptr->name);
 			printItemTable(table);
-			if(i != argc - 1) printf("\n");
+			
+			ptr = ptr->next;
+			printf("\n");
 		}
 	}
 	else if(iDirs == 1)
 	{
-		struct item_table table = genPwdTable(argv[argc - iDirs]);
+		struct item_table table = genPwdTable(ptr->name);
 		printItemTable(table);
 	}
 	else // iDirs = 0
@@ -98,6 +193,10 @@ int main(int argc, char *argv[])
 
 struct item_table genPwdTable(const char *path)
 {
+	char old_cwd[MAX_DIRCHAR_BUFSIZE];
+	if(NULL == getcwd(old_cwd, MAX_DIRCHAR_BUFSIZE))
+	{ printf(" [!] ERROR: Save old cwd failed!\n"); exit(1); }
+	
 	// 1. cd to current directory.
 	if(chdir(path) != 0)
 	{ printf(" [!] ERROR: chdir() failed! errno = %d\n - See http://man7.org/linux/man-pages/man3/errno.3.html\n", errno); exit(1); }
@@ -187,8 +286,9 @@ struct item_table genPwdTable(const char *path)
 		iItem++;
 	}	
 	
-	// X. CLOSE DIR
+	// X. CLOSE DIR; cd back to the old working dir.
 	closedir(p_cd);
+	chdir(old_cwd);
 	
 	return table;
 }
@@ -196,7 +296,7 @@ struct item_table genPwdTable(const char *path)
 void printItemTable(struct item_table table)
 {
 	struct file_item *p = table.head;
-	while((p = p->next) != NULL)
+	while((p = p->next) != NULL) // TODO 少一个！！！！！！！！！！！！！！！！！！！！
 	{		
 		// Switch 1: -a
 		if(p->data[7].str[0] == '.') 
@@ -217,18 +317,4 @@ void printItemTable(struct item_table table)
 		printf("\n");
 	}	
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
